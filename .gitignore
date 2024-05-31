@@ -1,0 +1,8 @@
+/014.다화자_음성합성_데이터
+/aihubshell
+whisper/datasets
+vr/TIMIT.zip
+whisper/results
+/vr/data/lisa/data/timit/raw/TIMIT
+sed_data/
+vr/results.json

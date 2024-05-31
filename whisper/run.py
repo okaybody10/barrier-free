@@ -31,7 +31,7 @@ def get_answer(filename):
         vv = json.load(fp)
     return vv["전사정보"]["OrgLabelText"]
     
-default_path = "/gallery_tate/jaehyuk.sung/tasks/whisper"
+default_path = "./"
 datasets = join(default_path, 'datasets')
 # print(os.listdir(datasets))
 already = [os.path.splitext(i)[0] for i in os.listdir(join(default_path, "TL11_large")) if i.endswith(".json")]

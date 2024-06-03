@@ -1,6 +1,7 @@
 {
-  "model_size": "large",
-  "labeling_path": "abc",
-  "sound_path": "abc",
-  "save_path": "abc"
+  "model_size": "base",
+  "batch": 256,
+  "labeling_path": "",
+  "sound_path": "",
+  "save_path": ""
 }

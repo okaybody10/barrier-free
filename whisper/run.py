@@ -1,87 +1,114 @@
 import os
 import json
-from os.path import isdir, join
-from tqdm import tqdm
-import whisper
+import glob
+import torch
+import numpy as np
+import os.path as path
 from transformers import WhisperProcessor, WhisperForConditionalGeneration
 from datasets import load_dataset, Audio
-import numpy as np
-import time
-import torch
+from tqdm import tqdm
+from metric import calc_result
 
 # Model Load
 # processor = WhisperProcessor.from_pretrained("openai/whisper-medium")
 # model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-medium").to("cuda")
-print("=======Model Load Start!=======")
-processor = WhisperProcessor.from_pretrained("openai/whisper-large-v2")
-model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-large-v2").to("cuda")
-forced_decoder_ids = processor.get_decoder_prompt_ids(language="korean", task="transcribe")
-print("=======Model Load End!=======")
+"""
+Extracts and returns the value associated with the key "전사정보" -> "OrgLabelText" from a JSON file.
 
+Args:
+    filename (str): The path to the JSON file to extract the value from.
 
-def check(list1, list2) :
-    from collections import Counter
-    if Counter(list1) == Counter(list2) :
-        return 1
-    else :
-        return 0
-
+Returns:
+    str: The value associated with the key "전사정보" -> "OrgLabelText" in the JSON file.
+"""
 def get_answer(filename):
     with open(filename, "r") as fp :
         vv = json.load(fp)
     return vv["전사정보"]["OrgLabelText"]
-    
-default_path = "./"
-datasets = join(default_path, 'datasets')
-# print(os.listdir(datasets))
-already = [os.path.splitext(i)[0] for i in os.listdir(join(default_path, "TL11_large")) if i.endswith(".json")]
 
-labeling_path = join(datasets, 'labeling')
-labeling_sets = sorted([f for f in os.listdir(labeling_path) if isdir(join(labeling_path, f))])
-source_path = join(datasets, 'source')
-source_sets = sorted([f for f in os.listdir(source_path) if isdir(join(source_path, f))])
-labeling_path1 = 'TL11'
-# TODO: change path
-# for labeling_path1 in labeling_sets :
-numbering = 'TS' + labeling_path1[2:] 
-la_p1 = join(labeling_path, labeling_path1, '1')
-so_p1 = join(source_path, numbering, '1')
-la_ls = os.listdir(la_p1)
-for labeling_path2 in la_ls :
-    la_p2 = join(la_p1, labeling_path2)
-    so_p2 = join(so_p1, labeling_path2)
-    la_l = os.listdir(la_p2)
-    so_l = os.listdir(so_p2)
-    for _, i in enumerate(tqdm(la_l)) :
-        if i in already:
-            print(f"already exist! {i}")
-            continue
-        la_p3 = join(la_p2, i)
-        so_p3 = join(so_p2, i)
+"""
+Creates a dictionary of files grouped by parent folders and a mapping of file names to paths.
+
+Args:
+    file_path (str): The path to the directory containing files.
+    extension (str): The file extension to filter files by.
+
+Returns:
+    tuple: A tuple containing two dictionaries:
+        - The first dictionary organizes files by parent folders.
+        - The second dictionary maps file names to their full paths.
+"""
+def file_list(file_path, extension) :
+    answer = {}
+    get_path = {}
+    for file in glob.iglob(f"{path.normpath(file_path)}/**/*.{extension}", recursive=True) :
+    # print(file)
+        paths, name_ext = path.split(file)
+        name, _ = name_ext.split('.')
+        paths = path.basename(paths)
+        if paths in list(answer.keys()) :
+            answer[paths].append(name)
+        else :
+            answer[paths] = [name]
+        # answer.append({"folder": path.basename(paths), "name": name[:-5]})
+        get_path[name] = file
+    return answer, get_path
+
+if __name__ == "__main__" :
+    convert = {
+        'tiny': 'openai/whisper-tiny',
+        'base': 'openai/whisper-base',
+        'small': 'openai/whisper-small',
+        'medium': 'openai/whisper-medium',
+        'large': 'openai/whisper-large',
+        'large-v2': 'openai/whisper-large-v2'
+    }
+    with open("./config.json", "r") as fp :
+        configs = json.load(fp)
+    # Model Load
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    print("=======Model Load Start!=======")
+    
+    try :
+        model_size = convert[configs['model_size']]
+    except KeyError:
+        print("Incorret model size, please check")
+        
+    processor = WhisperProcessor.from_pretrained(model_size)
+    model = WhisperForConditionalGeneration.from_pretrained(model_size).to(device)
+    forced_decoder_ids = processor.get_decoder_prompt_ids(language="korean", task="transcribe")
+    
+    print("=======Model Load End!=======")
+    print("=======Predict Start!=======")
+    label_path = configs['labeling_path']
+    source_path = configs['sound_path']
+    save_path = configs['save_path']
+    labeling, label_fpath = file_list(label_path, "json")
+    source, source_fpath = file_list(source_path, "wav")
+    final = {a: list(set(labeling[a]) & set(source[a])) for a in labeling.keys() & source.keys()}
+    
+    for key, value in final.items() :
         json_write = []
-        tmps = os.listdir(la_p3)
-        files_name = [os.path.splitext(filename)[0] for filename in tmps]
-        offset = 16
+        offset = configs['batch']
         batches = []
-        for itr in range(0, len(files_name), offset) :
-            batches.append(files_name[itr : itr+offset])
+        for itr in range(0, len(value), offset) :
+            batches.append(value[itr : itr+offset])
         for index, batch in enumerate(tqdm(batches)) :
-            # batch: file_name
-            answer_json = [get_answer(join(la_p3, name)) for name in tmps]
-            wav_files = [filename + '.wav' for filename in batch]
-            ds = load_dataset(so_p3, data_files = wav_files)["train"].cast_column("audio", Audio(sampling_rate = 16000))
-            # print(ds)
+            answer_json = [get_answer(label_fpath[lab_path]) for lab_path in batch]
+            wav_files = [src_name + '.wav' for src_name in batch]
+            paths = path.dirname(source_fpath[batch[0]])
+            ds = load_dataset(paths, data_files = wav_files)["train"].cast_column("audio", Audio(sampling_rate = 16000))
             raw_audio = [x["array"].astype(np.float32) for x in ds["audio"]]
             input_features = processor(raw_audio, return_tensors="pt", sampling_rate = 16000).input_features 
             # print("=======Dataset Load End!=======")
             # generate token ids
             with torch.no_grad() :
-                predicted_ids = model.generate(input_features.to("cuda"), forced_decoder_ids= forced_decoder_ids)
+                predicted_ids = model.generate(input_features.to(device), forced_decoder_ids= forced_decoder_ids)
             # decode token ids to text
             # transcription = processor.batch_decode(predicted_ids, skip_special_tokens=False)
             transcription = processor.batch_decode(predicted_ids, skip_special_tokens=True)
             predicts = [trans.strip() for trans in transcription]
-                
             for file_name, answer, predict in zip(batch, answer_json, predicts) :
                 json_write.append({
                     "file": file_name,
@@ -90,5 +117,12 @@ for labeling_path2 in la_ls :
                 })
             if index % 10 == 0 :
                 print(f"{index} / {len(batches)} ends\n")
-        with open("/gallery_tate/jaehyuk.sung/tasks/whisper/results/TL11_large/" + i + ".json", "w") as fp :
+            if not os.path.exists(save_path) :
+                os.makedirs(save_path)
+        with open(os.path.join(save_path, key + ".json"), "w") as fp :
             json.dump(json_write, fp)
+            fp.close()
+    print("=======Predict End!=======")
+    print("=======Performance calculate Start!=======")
+    calc_result(save_path)
+    print("=======Performance calculate End!=======")

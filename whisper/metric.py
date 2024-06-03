@@ -1,33 +1,25 @@
 import json
+import glob
+import os.path as path
 from nlptutti import get_cer, get_wer, get_crr
 from tqdm import tqdm
-import os
-# import nlptutti as metrics)
-def in_folder(folder_path) :
-    pass
-result_def_path = "/gallery_tate/jaehyuk.sung/tasks/whisper/results/"
-result_dir = os.listdir(result_def_path)
-flag = True
-for i in result_dir :
-    cer = 0
-    wer = 0
-    crr = 0
-    cnt = 0
-    t_p = os.path.join(result_def_path, i)
-    print(f"now directory: {t_p}")
-    jsons = os.listdir(t_p)
-    for f in jsons:
-        file_p = os.path.join(t_p, f)
-        with open(file_p, "r") as fp:
-            vv = json.load(fp)
-            # if flag is True :
-            #     print(vv)
-            #     flag = False
-            tq = tqdm(vv)
-            this_cnt = 0
-            this_cer = 0
-            this_wer = 0
-            this_crr = 0
+"""
+Calculates and prints the average metrics (CER, WER, CRR) for ground truth and predicted values in JSON files.
+
+Args:
+    paths (str): The path to the directory containing JSON files.
+
+Returns:
+    None
+"""
+def calc_result(paths) :
+    result_files = glob.glob(f"{path.normpath(paths)}/**/*.json", recursive=True)
+    cer, wer, crr, cnt = [0] * 4
+    for i in result_files :
+        with open(i, "r") as fp:
+            sheets = json.load(fp)
+            tq = tqdm(sheets)
+            this_cnt, this_cer, this_wer, this_crr = [0] * 4
             for _, element in enumerate(tq) :
                 gt = element['gt']
                 pr = element['predict']
@@ -43,5 +35,13 @@ for i in result_dir :
                 crr += n_crr
                 this_crr += n_crr
                 tq.set_description(f"Now cnt: {this_cnt}, cer: {this_cer/this_cnt:.2f}, wer: {this_wer/this_cnt:.2f}, crr: {this_crr/this_cnt:.2f}")
-                # print(f"Now cnt: {cnt}, cer: {cer}")
+        fp.close()
     print(f"=====Final Result=====\ntotal: {cnt}\ncer: {cer/cnt}\nwer: {wer/cnt}\ncrr: {crr/cnt}")
+        
+if __name__ == "__main__" :
+    with open('./config.json', "r") as fp :
+        tmp = json.load(fp)
+        result_path = tmp['save_path']
+        fp.close()
+    calc_result(result_path)
+    # Get all jsons

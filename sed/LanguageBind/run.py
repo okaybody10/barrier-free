@@ -112,6 +112,9 @@ if __name__ == "__main__" :
     
     metric = {'prec': prec, 'rec': rec, 'f1 score': f1}
     
+    if not os.path.exists(save_path) :
+        os.makedirs(save_path)
+        
     with open(os.path.join(save_path, 'result.json'), 'w') as fp:
         json.dump(results, fp)
         fp.close()

@@ -23,7 +23,7 @@ def gt_lab(labels) :
                         
 if __name__ == "__main__" :
     with open('./config.json', "r") as fp :    
-        config = json.load("./config.json")
+        config = json.load(fp)
     default_path = config['path']
 
     # [{'wav_path' : , 'txt_path':}]
